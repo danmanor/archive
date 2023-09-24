@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filepack"
+version = "0.1.0"
+description = "A user-friendly interface for handling files, archives, and compressed files in Python"
+requires-python=">=3.11.0"
+authors = [
+    { name = "Dan Manor", email = "danmanor11@gmail.com" }
+]
+keywords = ["file", "pack", "unpack", "archive", "compression", "compressor"]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "py7zr>=0.20.6",
+    "tabulate==0.9.0",
+    "types-tabulate==0.9.0.3",
+    "rarfile==4.1",
+    "pytz==2023.3.post1",
+    "types-pytz==2023.3.1.1",
+    "lz4==4.3.2",
+    "filetype==1.2.0",
+    "docopt==0.6.2",
+    "toml==0.10.2",
+]
+
+[project.urls]
+"Repository" = "https://github.com/danmanor/filepack"
+"Bug Tracker" = "https://github.com/danmanor/filepack/issues"
+
+[project.optional-dependencies]
+test-runner = [
+    "tox==4.11.3",
+]
+test = [
+    "pytest==7.4.2",
+]
+format = [
+    "black==23.9.1",
+    "isort==5.12.0",
+]
+types = [
+    "mypy==1.5.1",
+]
+lint = [
+    "flake8==6.1.0",
+]
+
+[project.scripts]
+filepack = "filepack.__main__:main"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+show_error_codes = true
+
+[tool.black]
+line-length = 79
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 79
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    envlist =
+        py311
+        check-format
+        check-types
+        lint
+
+    [testenv]
+    usedevelop=True
+    commands=pytest tests
+    deps=.[test]
+
+    [testenv:check-format]
+    deps=.[format]
+    commands=
+        isort --profile black --check-only --diff src/
+        black --diff --check src/
+
+    [testenv:check-types]
+    deps=.[types]
+    commands=mypy src/
+
+    [testenv:lint]
+    deps=.[lint]
+    commands=
+        flake8 src/
+"""
