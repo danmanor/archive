@@ -1,218 +1,135 @@
-import pytest
 from pathlib import Path
-import filetype
 
-import zipfile
-import py7zr
-import tarfile
-import shutil
+import pytest
+from conftest import ARCHIVE_EXTENSIONS, COMPRESSION_EXTENSIONS
 
 from filepack.filepack import FilePack
-from filepack.compressions.consts import (
-    SUPPORTED_COMPRESSIONS_SUFFIXES
-)
 
 
-ARCHIVES_PATH = Path(__file__).parent / "archives" / "archive_examples"
-
-@pytest.fixture
-def tar_file(tmp_path: Path, txt_file: Path) -> Path:
-    zip_path = tmp_path / "test.rar"
-    with tarfile.TarFile(zip_path, 'w') as tar_file:
-        tar_file.add(txt_file, txt_file.name)
-    return zip_path
-
-@pytest.fixture
-def zip_file(tmp_path: Path, txt_file: Path) -> Path:
-    zip_path = tmp_path / "test.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zip_file:
-        zip_file.write(txt_file, txt_file.name)
-    return zip_path
-
-@pytest.fixture
-def seven_zip_file(tmp_path: Path, txt_file: Path) -> Path:
-    sevenz_path = tmp_path / "test.7z"
-    with py7zr.SevenZipFile(sevenz_path, 'w') as archive:
-        archive.write(txt_file, txt_file.name)
-    return sevenz_path
-
-@pytest.fixture
-def rar_file() -> Path:
-    return ARCHIVES_PATH / "archive.rar"
-
-@pytest.fixture
-def archives(tar_file: Path, zip_file: Path, seven_zip_file: Path, rar_file: Path) -> list[Path]:
-    return [tar_file, zip_file, seven_zip_file, rar_file]
+def test_initialize_with_compressed_file_path_should_be_successful(
+    compressed_file: Path,
+):
+    compressed_file, _ = compressed_file
+    FilePack(path=compressed_file)
 
 
-def test_sizes_with_valid_instances(txt_file: Path):
+def test_initialize_with_uncompressed_file_path_should_be_successful(
+    txt_file: Path,
+):
+    FilePack(path=txt_file)
+
+
+def test_initialize_with_archive_file_path_should_be_successful(
+    archive_file: Path,
+):
+    FilePack(path=archive_file)
+
+
+@pytest.mark.parametrize("archive_extension", ARCHIVE_EXTENSIONS)
+def test_initialize_with_non_existent_archive_file_path_with_correct_suffix_should_be_successful(
+    archive_extension: str,
+):
+    FilePack(path=Path(f"non-existent-archive.{archive_extension}"))
+
+
+def test_initialize_with_non_existent_archive_file_path_with_incorrect_suffix_should_raise_an_exception():
+    with pytest.raises(ExceptionGroup):
+        FilePack(path="non-existent-archive.foo-bar")
+
+
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+@pytest.mark.parametrize("archive_extension", ARCHIVE_EXTENSIONS)
+def test_archive_then_compress_should_be_successful(
+    compression_algorithm: str,
+    archive_extension: str,
+    txt_file: Path,
+    tmp_path: Path,
+):
+    new_archive_path = tmp_path / f"new_archive.{archive_extension}"
+
+    fp = FilePack(path=new_archive_path)
+    fp.add_member(member_path=txt_file)
+
+    assert fp.get_member(member_name=txt_file.name) is not None
+
+    compressed_archive_path = (
+        new_archive_path.parent
+        / f"{new_archive_path.name}.{compression_algorithm}"
+    )
+    fp.compress(
+        target_path=compressed_archive_path,
+        compression_algorithm=compression_algorithm,
+        in_place=True,
+    )
+
+    assert fp.is_compressed(compression_algorithm=compression_algorithm)
+
+    fp.decompress(
+        target_path=new_archive_path,
+        compression_algorithm=compression_algorithm,
+        in_place=True,
+    )
+
+    assert not fp.is_compressed(compression_algorithm=compression_algorithm)
+
+    target_file_directory_path = tmp_path / "target_dir"
+    fp.extract_member(
+        member_name=txt_file.name,
+        target_directory_path=target_file_directory_path,
+    )
+
+    directory_files = list(target_file_directory_path.iterdir())
+    assert len(directory_files) == 1
+    file = directory_files[0]
+    assert file.name == txt_file.name
+    assert file.read_bytes() == txt_file.read_bytes()
+
+
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+@pytest.mark.parametrize("archive_extension", ARCHIVE_EXTENSIONS)
+def test_compress_then_archive_should_be_successful(
+    compression_algorithm: str,
+    archive_extension: str,
+    txt_file: Path,
+    tmp_path: Path,
+):
+    compressed_file_path = (
+        txt_file.parent / f"{txt_file.name}.{compression_algorithm}"
+    )
     fp = FilePack(path=txt_file)
+    fp.compress(
+        target_path=compressed_file_path,
+        compression_algorithm=compression_algorithm,
+    )
 
-    for compression in SUPPORTED_COMPRESSIONS_SUFFIXES:
-        uncompressed_size = fp.path.stat().st_size
-        
-        fp.compress(
-            compression_algorithm=compression,
-            compression_level=9,
-            in_place=True
-        )
+    fp = FilePack(path=compressed_file_path)
+    assert fp.is_compressed(compression_algorithm=compression_algorithm)
 
-        assert fp.is_compressed(compression_algorithm=compression)
+    new_archive_path = tmp_path / f"new_archive.{archive_extension}"
+    fp = FilePack(path=new_archive_path)
+    fp.add_member(member_path=compressed_file_path)
 
-        compressed_size = fp.path.stat().st_size
-        fp.decompress(compression_algorithm=compression, in_place=True)
+    assert fp.get_member(member_name=compressed_file_path.name) is not None
 
-        assert not fp.is_compressed(compression_algorithm=compression)
-        assert abs(uncompressed_size - fp.path.stat().st_size) < 10 
-        assert abs(fp.uncompressed_size(
-            compression_algorithm=compression
-        ) - fp.path.stat().st_size) < 10
-        assert abs(compressed_size - fp.compressed_size(
-            compression_algorithm=compression,
-            compression_level=9
-        )) < 10
+    target_file_directory_path = tmp_path / "target_dir"
+    fp.extract_member(
+        member_name=compressed_file_path.name,
+        target_directory_path=target_file_directory_path,
+    )
 
+    directory_files = list(target_file_directory_path.iterdir())
+    assert len(directory_files) == 1
+    file = directory_files[0]
+    assert file.name == compressed_file_path.name
 
-def test_sizes_with_invalid_instances(txt_file: Path):
-    fp = FilePack(path=txt_file)
+    fp = FilePack(path=file)
+    uncompressed_file = tmp_path / "uncompressed.txt"
 
-    with pytest.raises(Exception):
-        fp.compress(
-            compression_algorithm="non-existed-type"
-        )
+    fp.decompress(
+        target_path=uncompressed_file,
+        compression_algorithm=compression_algorithm,
+    )
 
-
-def test_add_member_with_valid_memeber(archives: list[Path], txt_file: Path):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-        fp.add_member(member_path=txt_file)
-
-        assert ["new_file.txt", "new_file.txt"] == fp.get_members_name()
-
-
-def test_add_member_with_invalid_memeber(archives: list[Path]):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-        with pytest.raises(Exception):
-            fp.add_member(member_path="non-existent-member")
-
-
-def test_remove_member_with_valid_member(archives: list[Path], txt_file: Path):
-    for archive_path in archives:
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-        fp = FilePack(path=archive_path)
-        member_name = txt_file.name
-        fp.add_member(member_path=txt_file)
-        fp.remove_member(member_name=member_name)
-        assert member_name not in fp.get_members_name()
-
-
-def test_add_remove_with_valid_member(archives: list[Path], txt_file: Path):
-    for archive_path in archives:
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-        fp = FilePack(path=archive_path)
-        member_name = txt_file.name
-        fp.add_member(member_path=txt_file)
-        assert member_name in fp.get_members_name()
-        fp.remove_member(member_name=member_name)
-        assert member_name not in fp.get_members_name()
-
-def test_extract_member_with_valid_member(archives: list[Path], tmp_path: Path):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-
-        target_path = tmp_path / "extracted"
-        target_path.mkdir(exist_ok=True)
-
-        if filetype.guess(archive_path).extension == "rar":
-            fp.extract_member(member_name="sample-1_1.webp", target_path=target_path)
-            extracted_file_path = target_path / "sample-1_1.webp"
-            assert extracted_file_path.exists()
-            continue
-
-        fp.extract_member(member_name="new_file.txt", target_path=target_path)
-        extracted_file_path = target_path / "new_file.txt"
-        assert extracted_file_path.exists()
-
-def test_extract_member_with_invalid_member(archives: list[Path], tmp_path: Path):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-        target_path = tmp_path / "extracted"
-        target_path.mkdir(exist_ok=True)
-        with pytest.raises(Exception):
-            fp.extract_member(member_name="non-existent-member", target_path=target_path)
-
-def test_get_members_with_some_members(archives: list[Path], txt_file: Path):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-
-        assert len(fp.get_members()) == 1
-
-def test_remove_all_members_with_no_members(archives: list[Path]):
-    for archive_path in archives:
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-
-        fp = FilePack(path=archive_path)
-        fp.remove_all()
-
-        assert len(fp.get_members()) == 0
-
-        fp.remove_all()
-
-
-def test_remove_all_members_with_some_members(archives: list[Path]):
-    for archive_path in archives:
-        if filetype.guess(archive_path).extension == "rar":
-            continue
-
-        fp = FilePack(path=archive_path)
-        
-        fp.remove_all()
-        assert len(fp.get_members()) == 0
-
-def test_get_member_with_valid_member(archives: list[Path]):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-        if filetype.guess(archive_path).extension == "rar":
-            member = fp.get_member("sample-1_1.webp")
-            assert member is not None
-            continue
-    
-        member = fp.get_member("new_file.txt")
-
-        assert member is not None
-        assert member.name == "new_file.txt"
-
-def test_get_member_with_invalid_member(archives: list[Path]):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-        member = fp.get_member("non-existent-member")
-        assert member is None
-
-def test_compress_archive_with_valid_archive(tmp_path: Path, archives: list[Path]):
-    for archive_path in archives:
-        fp = FilePack(path=archive_path)
-
-        if filetype.guess(archive_path).extension == "rar":
-            duplicate_path = tmp_path / "duplicate"
-            shutil.copy(src=archive_path, dst=duplicate_path)
-            fp = FilePack(path=duplicate_path)
-
-        for compression in SUPPORTED_COMPRESSIONS_SUFFIXES:
-            fp.compress(compression_algorithm=compression, in_place=True)
-            assert fp.is_compressed(compression_algorithm=compression)
-
-def test_compress_archive_with_invalid_archive(tmp_path: Path):
-    invalid_archive_path = tmp_path / "test.invalid"
-    invalid_archive_path.touch()
-    fp = FilePack(path=invalid_archive_path)
-    with pytest.raises(Exception):
-        fp.compress(compression_algorithm="zip")
+    fp = FilePack(path=uncompressed_file)
+    assert not fp.is_compressed(compression_algorithm=compression_algorithm)
+    assert uncompressed_file.read_bytes() == txt_file.read_bytes()

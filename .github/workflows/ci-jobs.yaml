@@ -7,11 +7,11 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  check-format:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.11]
+        python-version: [3.12]
 
     steps:
     - name: Checkout code
@@ -25,8 +25,80 @@ jobs:
     - name: Install package
       run: make install
 
-    - name: Install dependencies
-      run: make install-test
+    - name: Install test runner
+      run: pip install tox
+
+    - name: Check format
+      run: tox -e check-format
+
+  check-types:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install package
+      run: make install
+
+    - name: Install test runner
+      run: pip install tox
+
+    - name: Check types
+      run: tox -e check-types
+
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install package
+      run: make install
+
+    - name: Install test runner
+      run: pip install tox
+
+    - name: Lint
+      run: tox -e lint
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install package
+      run: make install
+
+    - name: Install test runner
+      run: pip install tox
 
     - name: Test
-      run: make test
+      run: tox -e test

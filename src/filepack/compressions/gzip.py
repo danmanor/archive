@@ -2,21 +2,13 @@ import gzip
 from pathlib import Path
 from typing import TextIO
 
-from filepack.compressions.models import AbstractCompression, CompressionType
+from filepack.compressions.models import AbstractCompression
 
 
 class GzipCompression(AbstractCompression):
     """Represents a compression operation for files using the gzip algorithm."""
 
-    def __init__(self, path: Path) -> None:
-        """Initializes the GzipCompression with the specified file path.
-
-        Args:
-            path: The file system path to the file.
-        """
-        super().__init__(path=path, extension=CompressionType.GZIP.value)
-
-    def _open(
+    def open(
         self,
         file_path: str | Path,
         mode: str = "r",

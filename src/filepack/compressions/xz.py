@@ -2,21 +2,13 @@ import lzma
 from pathlib import Path
 from typing import TextIO
 
-from filepack.compressions.models import AbstractCompression, CompressionType
+from filepack.compressions.models import AbstractCompression
 
 
 class XZCompression(AbstractCompression):
     """Represents a compression operation for files using the XZ algorithm."""
 
-    def __init__(self, path: Path) -> None:
-        """Initializes the XZCompression with the specified file path.
-
-        Args:
-            path: The file system path to the file.
-        """
-        super().__init__(path=path, extension=CompressionType.XZ.value)
-
-    def _open(
+    def open(
         self,
         file_path: str | Path,
         mode: str = "r",
