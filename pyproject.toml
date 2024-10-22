@@ -16,6 +16,7 @@ readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "py7zr>=0.20.6",
