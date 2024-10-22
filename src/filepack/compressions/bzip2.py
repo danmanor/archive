@@ -2,21 +2,13 @@ import bz2
 from pathlib import Path
 from typing import TextIO
 
-from filepack.compressions.models import AbstractCompression, CompressionType
+from filepack.compressions.models import AbstractCompression
 
 
 class BzipCompression(AbstractCompression):
     """Represents a compression operation for files using the bzip2 algorithm."""
 
-    def __init__(self, path: Path) -> None:
-        """Initializes the BzipCompression with the specified file path.
-
-        Args:
-            path: The file system path to the file.
-        """
-        super().__init__(path=path, extension=CompressionType.BZ2.value)
-
-    def _open(
+    def open(
         self,
         file_path: str | Path,
         mode: str = "r",

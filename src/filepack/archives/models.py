@@ -1,16 +1,12 @@
+import tempfile
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from tabulate import tabulate
-
-from filepack.archives.consts import (
-    RAR_SUFFIX,
-    SEVEN_ZIP_SUFFIX,
-    TAR_SUFFIX,
-    ZIP_SUFFIX,
-)
+from filepack.archives.consts import SEVEN_ZIP_SUFFIX, TAR_SUFFIX, ZIP_SUFFIX
+from filepack.archives.types import ArchiveObjectTypes
+from filepack.utils import get_file_type_extension
 
 
 class ArchiveType(Enum):
@@ -18,153 +14,115 @@ class ArchiveType(Enum):
 
     TAR = TAR_SUFFIX
     ZIP = ZIP_SUFFIX
-    RAR = RAR_SUFFIX
     SEVEN_ZIP = SEVEN_ZIP_SUFFIX
 
 
 class UnknownFileType:
     """Represents an unknown file type within an archive."""
 
-    pass
+    def __str__(self) -> str:
+        return "Unknown File Type"
 
 
-class ArchiveMember:
-    """Represents a single member within an archive, holding its metadata."""
-
+class AbstractArchiveObject(ABC):
     def __init__(
         self,
+        archive_object: ArchiveObjectTypes,
+        client: "AbsractArchiveClient",
+        path: Path,
+    ) -> None:
+        self._archive_object = archive_object
+        self._client = client
+        self._path = path
+
+    def __enter__(self) -> "AbstractArchiveObject":
+        self._archive_object = self._archive_object.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._archive_object.__exit__(exc_type, exc_value, traceback)
+
+    def extract_all(self, target_directory_path: Path):
+        for member in self.get_members():
+            self.extract_member(
+                member_name=member.name,
+                target_directory_path=target_directory_path,
+            )
+
+    def get_member(
+        self, member_name: str
+    ) -> Optional["AbstractArchiveMember"]:
+        try:
+            return next(
+                member
+                for member in self.get_members()
+                if member.name == member_name
+            )
+        except StopIteration:
+            return None
+
+    @abstractmethod
+    def get_members(self) -> list["AbstractArchiveMember"]:
+        pass
+
+    @abstractmethod
+    def extract_member(self, member_name: str, target_directory_path: Path):
+        pass
+
+    @abstractmethod
+    def add_member(self, member_path: Path):
+        pass
+
+
+class AbsractArchiveClient(ABC):
+    @abstractmethod
+    def open(self, file_path: Path, mode: str) -> AbstractArchiveObject:
+        pass
+
+
+class AbstractArchiveMember(ABC):
+    def __init__(
+        self,
+        client: AbsractArchiveClient,
+        archive_path: Path,
         name: str,
         size: int,
         mtime: str,
-        type: str | UnknownFileType,
     ) -> None:
-        """Initializes an ArchiveMember object with metadata.
+        self._client = client
+        self._archive_path = archive_path
+        self._name = name
+        self._size = size
+        self._mtime = mtime
 
-        Args:
-            name: The name of the archive member.
-            size: The size of the archive member in bytes.
-            mtime: The modification time of the archive member.
-            type: The type of the file or an instance of UnknownFileType if unknown.
-        """
-        self.name = name
-        self.size = size
-        self.mtime = mtime
-        self.type = type
+    @property
+    def name(self) -> str:
+        return self._name
 
+    @property
+    def size(self) -> int:
+        return self._size
 
-class AbstractArchive(ABC):
-    """Abstract base class for different archive types."""
+    @property
+    def mtime(self) -> str:
+        return self._mtime
 
-    def __init__(self, path: Path, extension: str) -> None:
-        """Initializes an AbstractArchive with the path to the archive and its extension.
+    @property
+    def type(self) -> str:
+        with self._client.open(self._archive_path, "r") as archive_object:
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                temporary_directory_path = (
+                    Path(temporary_directory) / self._name
+                )
+                archive_object.extract_member(
+                    member_name=self._name,
+                    target_directory_path=temporary_directory_path,
+                )
 
-        Args:
-            path: The filesystem path to the archive.
-            extension: The extension of the archive file.
-        """
-        self._path = path
-        self._suffix = path.suffix.lstrip(".")
-        self._dot_suffix = path.suffix
-        self._extension = extension
-
-    @abstractmethod
-    def get_members(self) -> list[ArchiveMember]:
-        """Retrieves a list of ArchiveMember objects representing the contents of the archive."""
-        pass
-
-    @abstractmethod
-    def add_member(self, member_path: str | Path, in_place: bool = False):
-        """Adds a new member to the archive.
-
-        Args:
-            member_path: The filesystem path of the member to add.
-            in_place: If true, the member's path will be deleted after addition.
-        """
-        pass
-
-    @abstractmethod
-    def remove_member(self, member_name: str):
-        """Removes a member from the archive.
-
-        Args:
-            member_name: The name of the member to remove.
-        """
-        pass
-
-    @abstractmethod
-    def get_member(self, member_name: str) -> Optional[ArchiveMember]:
-        """Retrieves metadata for a specific member in the archive.
-
-        Args:
-            member_name: The name of the member to retrieve metadata for.
-
-        Returns:
-            An ArchiveMember object if the member exists, None otherwise.
-        """
-        pass
-
-    @abstractmethod
-    def member_exist(self, member_name: str) -> bool:
-        """Checks whether a member exists in the archive.
-
-        Args:
-            member_name: The name of the member to check for existence.
-
-        Returns:
-            True if the member exists, False otherwise.
-        """
-        pass
-
-    @abstractmethod
-    def extract_member(
-        self, member_name: str, target_path: str | Path, in_place: bool = False
-    ):
-        """Extracts a specific member from the archive to a target path.
-
-        Args:
-            member_name: The name of the member to extract.
-            target_path: The target path where the member will be extracted.
-            in_place: If True, the member will be removed from archive after extraction.
-        """
-        pass
-
-    def extract_all(self, target_path: str | Path, in_place: bool = False):
-        """Extracts all members from the archive to a target path.
-
-        Args:
-            target_path: The target path where the members will be
-            in_place: If True, extract all files and remove archive. extracted.
-        """
-        for member in self.get_members():
-            self.extract_member(
-                member_name=member.name, target_path=target_path
-            )
-
-        if in_place:
-            self._path.unlink()
-
-    def remove_all(self):
-        """Removes all members from the archive."""
-        for member_name in self.get_members_name():
-            self.remove_member(member_name=member_name)
-
-    def get_members_name(self) -> list[str]:
-        """Retrieves a list of names of all members in the archive.
-
-        Returns:
-            A list of member names.
-        """
-        return [member.name for member in self.get_members()]
-
-    def print_members(self):
-        """Prints a tabulated view of all members and their metadata."""
-        members_metadata = [
-            {
-                "name": member.name,
-                "mtime": member.mtime,
-                "size": member.size,
-                "type": member.type,
-            }
-            for member in self.get_members()
-        ]
-        print(tabulate(members_metadata, headers="keys", tablefmt="grid"))
+                try:
+                    type = get_file_type_extension(
+                        path=temporary_directory_path
+                    )
+                    return type if type is not None else str(UnknownFileType())
+                except Exception:
+                    return str(UnknownFileType())

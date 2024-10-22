@@ -26,9 +26,5 @@ class FailedToRemoveArchiveMembers(Exception):
     pass
 
 
-class InvalidOperationException(Exception):
-    pass
-
-
 class ArchiveMemberDoesNotExist(Exception):
     pass

@@ -1,170 +1,138 @@
 from pathlib import Path
 
+import pytest
+from conftest import COMPRESSION_EXTENSIONS
+
 from filepack.compression import Compression
-from filepack.compressions.models import CompressionType
+from filepack.compressions.exceptions import (
+    FailedToCompressFile,
+    FailedToDecompressFile,
+)
 
 
-COMPRESSIONS_PATH = Path(__file__).parent / "compressions" / "compression_examples"
-
-def test_gzip_compression_in_place(txt_file: Path, tmp_path: Path):
-    comp = Compression(txt_file)
-    target_path = tmp_path / f"{txt_file.name}.{CompressionType.GZIP.value}"
-
-    uncompressed_size_before = txt_file.stat().st_size
-    comp.compress(in_place=True, compression_algorithm="gz", target_path=target_path)  
-    assert comp.is_compressed(compression_algorithm="gz")
-
-    compressed_size = target_path.stat().st_size
-    assert abs(comp.uncompressed_size(compression_algorithm="gz") - uncompressed_size_before) < 10
-    assert abs(comp.compressed_size(compression_algorithm="gz") - compressed_size) < 10
-
-    comp.decompress(in_place=True, compression_algorithm="gz", target_path=txt_file)
-    assert comp.path.read_text() == "Hello World !"
-    assert abs(comp.uncompressed_size(compression_algorithm="gz") - uncompressed_size_before) < 10
-    assert abs(comp.compressed_size(compression_algorithm="gz", compression_level = 9) < compressed_size) < 10
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+def test_is_compressed_should_be_false(
+    compression_algorithm: str, txt_file: Path
+):
+    compression_object = Compression(path=txt_file)
+    assert not compression_object.is_compressed(
+        compression_algorithm=compression_algorithm
+    )
 
 
-def test_bz2_compression_in_place(txt_file: Path, tmp_path: Path):
-    comp = Compression(txt_file)
-    target_path = tmp_path / f"{txt_file.name}.{CompressionType.BZ2.value}"
-
-    uncompressed_size_before = txt_file.stat().st_size
-    comp.compress(compression_algorithm="bz2", target_path=target_path, in_place=True)  
-    assert comp.is_compressed(compression_algorithm="bz2")
-
-    compressed_size = target_path.stat().st_size
-    assert comp.uncompressed_size(compression_algorithm="bz2") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="bz2") == compressed_size
-
-    comp.decompress(compression_algorithm="bz2", in_place=True, target_path=txt_file)
-    assert comp.path.read_text() == "Hello World !"
-    assert comp.uncompressed_size(compression_algorithm="bz2") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="bz2", compression_level=9) == compressed_size
+def test_is_compressed_should_be_true(compressed_file: Path):
+    compressed_file, compression_algorithm = compressed_file
+    compression_object = Compression(path=compressed_file)
+    assert compression_object.is_compressed(
+        compression_algorithm=compression_algorithm
+    )
 
 
-def test_lz4_compression_in_place(txt_file: Path, tmp_path: Path):
-    comp = Compression(txt_file)
-    target_path = tmp_path / f"{txt_file.name}.{CompressionType.LZ4.value}"
-
-    uncompressed_size_before = txt_file.stat().st_size
-    comp.compress(compression_algorithm="lz4", target_path=target_path, in_place=True)  
-    assert comp.is_compressed(compression_algorithm="lz4")
-
-    compressed_size = target_path.stat().st_size
-    assert comp.uncompressed_size(compression_algorithm="lz4") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="lz4") == compressed_size
-
-    comp.decompress(compression_algorithm="lz4", target_path=txt_file, in_place=True)
-    assert comp.path.read_text() == "Hello World !"
-    assert comp.uncompressed_size(compression_algorithm="lz4") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="lz4", compression_level=9) == compressed_size
+def test_compress_raises_error_for_compressed_files(compressed_file: Path):
+    compressed_file, compression_algorithm = compressed_file
+    compression_object = Compression(path=compressed_file)
+    with pytest.raises(FailedToCompressFile):
+        compression_object.compress(
+            compression_algorithm=compression_algorithm
+        )
 
 
-def test_xz_compression_in_place(txt_file: Path, tmp_path: Path):
-    comp = Compression(txt_file)
-    target_path = tmp_path / f"{txt_file.name}.{CompressionType.LZ4.value}"
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+def test_compress_file_should_be_successful(
+    compression_algorithm: str, txt_file: Path, tmp_path: Path
+):
+    target_file = tmp_path / "target"
+    compression_object = Compression(path=txt_file)
+    compression_object.compress(
+        target_path=target_file, compression_algorithm=compression_algorithm
+    )
 
-    uncompressed_size_before = txt_file.stat().st_size
-    comp.compress(compression_algorithm="xz", target_path=target_path, in_place=True)  
-    assert comp.is_compressed(compression_algorithm="xz")
+    assert target_file.exists()
+    compression_object = Compression(path=target_file)
 
-    compressed_size = target_path.stat().st_size
-    assert comp.uncompressed_size(compression_algorithm="xz") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="xz") == compressed_size
+    assert compression_object.is_compressed(
+        compression_algorithm=compression_algorithm
+    )
+    target_file = tmp_path / "uncompressed"
+    compression_object.decompress(
+        target_path=target_file,
+        compression_algorithm=compression_algorithm,
+    )
 
-    comp.decompress(compression_algorithm="xz", target_path=txt_file, in_place=True)
-    assert comp.path.read_text() == "Hello World !"
-    assert comp.uncompressed_size(compression_algorithm="xz") == uncompressed_size_before
-    assert comp.compressed_size(compression_algorithm="xz", compression_level=9) == compressed_size
-
-
-def test_gzip_compression_not_in_place(tmp_path: Path, txt_file: Path):
-    comp = Compression(txt_file)
-    compressed_path = tmp_path / "compressed.gz"
-    decompressed_path = tmp_path / "decompressed.txt"
-
-    comp.compress(target_path=compressed_path, compression_algorithm="gz")
-    assert compressed_path.exists()
-
-    comp_decompressed = Compression(compressed_path)
-    comp_decompressed.decompress(target_path=decompressed_path, compression_algorithm="gz")
-
-    assert decompressed_path.read_text() == "Hello World !"
+    assert target_file.exists()
+    assert target_file.read_bytes() == txt_file.read_bytes()
 
 
-def test_bz2_compression_not_in_place(tmp_path: Path, txt_file: Path):
-    comp = Compression(txt_file)
-    compressed_path = tmp_path / "compressed.bz2"
-    decompressed_path = tmp_path / "decompressed.txt"
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+def test_compress_file_in_place_should_be_successful(
+    compression_algorithm: str, txt_file: Path, tmp_path: Path
+):
+    target_file = tmp_path / "target"
+    compression_object = Compression(path=txt_file)
+    compression_object.compress(
+        target_path=target_file,
+        compression_algorithm=compression_algorithm,
+        in_place=True,
+    )
 
-    comp.compress(target_path=compressed_path, compression_algorithm="bz2")
-    assert compressed_path.exists()
-
-    comp_decompressed = Compression(compressed_path)
-    comp_decompressed.decompress(target_path=decompressed_path, compression_algorithm="bz2")
-
-    assert decompressed_path.read_text() == "Hello World !"
-
-
-def test_lz4_compression_not_in_place(tmp_path: Path, txt_file: Path):
-    comp = Compression(txt_file)
-    compressed_path = tmp_path / "compressed.lz4"
-    decompressed_path = tmp_path / "decompressed.txt"
-
-    comp.compress(target_path=compressed_path, compression_algorithm="lz4")
-    assert compressed_path.exists()
-
-    comp_decompressed = Compression(compressed_path)
-    comp_decompressed.decompress(target_path=decompressed_path, compression_algorithm="lz4")
-
-    assert decompressed_path.read_text() == "Hello World !"
+    assert target_file.exists()
+    assert Compression(path=target_file).is_compressed(
+        compression_algorithm=compression_algorithm
+    )
+    assert not txt_file.exists()
 
 
-def test_xz_compression_not_in_place(tmp_path: Path, txt_file: Path):
-    comp = Compression(txt_file)
-    compressed_path = tmp_path / "compressed.xz"
-    decompressed_path = tmp_path / "decompressed.txt"
-
-    comp.compress(target_path=compressed_path, compression_algorithm="xz")
-    assert compressed_path.exists()
-
-    comp_decompressed = Compression(compressed_path)
-    comp_decompressed.decompress(target_path=decompressed_path, compression_algorithm="xz")
-
-    assert decompressed_path.read_text() == "Hello World !"
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+def test_decompress_raises_error_for_non_compressed_files(
+    compression_algorithm: str, txt_file: Path
+):
+    compression_object = Compression(path=txt_file)
+    with pytest.raises(FailedToDecompressFile):
+        compression_object.decompress(
+            target_path="some_path.txt",
+            compression_algorithm=compression_algorithm,
+        )
 
 
-def test_gzip_decompression_from_examples(tmp_path: Path):
-    compressed_file = COMPRESSIONS_PATH / "compression_gzip.txt.gz"
-    comp = Compression(compressed_file)
+@pytest.mark.parametrize("compression_algorithm", COMPRESSION_EXTENSIONS)
+def test_decompress_raises_error_for_compressed_files_with_different_algorithm(
+    compression_algorithm: str, compressed_file: Path, txt_file: Path
+):
+    compressed_file, compressed_file_algorithm = compressed_file
+    compression_object = Compression(path=txt_file)
+    if compression_algorithm == compressed_file_algorithm:
+        return
 
-    assert comp.is_compressed(compression_algorithm="gz")
-    decompressed_path = tmp_path / "decompressed_gzip.txt"
-    comp.decompress(target_path=decompressed_path, compression_algorithm="gz")
-
-
-def test_bz2_decompression_from_examples(tmp_path: Path):
-    compressed_file = COMPRESSIONS_PATH / "compression_bzip2.txt.bz2"
-    comp = Compression(compressed_file)
-
-    assert comp.is_compressed(compression_algorithm="bz2")
-    decompressed_path = tmp_path / "decompressed_bz2.txt"
-    comp.decompress(target_path=decompressed_path, compression_algorithm="bz2")
+    with pytest.raises(FailedToDecompressFile):
+        compression_object.decompress(
+            target_path="some_path.txt",
+            compression_algorithm=compression_algorithm,
+        )
 
 
-def test_lz4_decompression_from_examples(tmp_path: Path):
-    compressed_file = COMPRESSIONS_PATH / "compression_lz4.txt.lz4"
-    comp = Compression(compressed_file)
+def test_decompress_file_should_be_successful(
+    compressed_file: Path, txt_file: Path, tmp_path: Path
+):
+    compressed_file, compressed_file_algorithm = compressed_file
+    target_file = tmp_path / "decompressed.txt"
+    compression_object = Compression(path=compressed_file)
+    compression_object.decompress(
+        target_path=target_file,
+        compression_algorithm=compressed_file_algorithm,
+    )
+    assert target_file.read_bytes() == txt_file.read_bytes()
 
-    assert comp.is_compressed(compression_algorithm="lz4")
-    decompressed_path = tmp_path / "decompressed_lz4.txt"
-    comp.decompress(target_path=decompressed_path, compression_algorithm="lz4")
 
-
-def test_xz_decompression_from_examples(tmp_path: Path):
-    compressed_file = COMPRESSIONS_PATH / "compression_xz.txt.xz"
-    comp = Compression(compressed_file)
-
-    assert comp.is_compressed(compression_algorithm="xz")
-    decompressed_path = tmp_path / "decompressed_xz.txt"
-    comp.decompress(target_path=decompressed_path, compression_algorithm="xz")
+def test_decompress_file_in_place_should_be_successful(
+    compressed_file: Path, txt_file: Path, tmp_path: Path
+):
+    compressed_file, compressed_file_algorithm = compressed_file
+    target_file = tmp_path / "decompressed.txt"
+    compression_object = Compression(path=compressed_file)
+    compression_object.decompress(
+        target_path=target_file,
+        compression_algorithm=compressed_file_algorithm,
+        in_place=True,
+    )
+    assert target_file.read_bytes() == txt_file.read_bytes()
+    assert not compressed_file.exists()

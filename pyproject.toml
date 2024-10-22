@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "filepack"
 version = "0.1.0"
 description = "A user-friendly interface for handling files, archives, and compressed files in Python"
-requires-python=">=3.11.0"
+requires-python=">=3.12.0"
 authors = [
     { name = "Dan Manor", email = "danmanor11@gmail.com" }
 ]
@@ -16,13 +16,11 @@ readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
     "py7zr>=0.20.6",
     "tabulate==0.9.0",
     "types-tabulate==0.9.0.3",
-    "rarfile==4.1",
     "pytz==2023.3.post1",
     "types-pytz==2023.3.1.1",
     "lz4==4.3.2",
@@ -53,17 +51,14 @@ lint = [
     "flake8==6.1.0",
 ]
 
-[project.scripts]
-filepack = "filepack.__main__:main"
-
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 show_error_codes = true
 
 [tool.black]
 line-length = 79
-target-version = ['py311']
+target-version = ['py312']
 include = '\.pyi?$'
 
 [tool.isort]
@@ -74,21 +69,28 @@ line_length = 79
 legacy_tox_ini = """
     [tox]
     envlist =
-        py311
+        test
+        format
         check-format
         check-types
         lint
 
-    [testenv]
+    [testenv:test]
     usedevelop=True
     commands=pytest tests
     deps=.[test]
 
+    [testenv:format]
+    deps=.[format]
+    commands=
+        isort --profile black src/ tests/
+        black src/ tests/
+
     [testenv:check-format]
     deps=.[format]
     commands=
-        isort --profile black --check-only --diff src/
-        black --diff --check src/
+        isort --profile black --check-only --diff src/ tests/
+        black --diff --check src/ tests/
 
     [testenv:check-types]
     deps=.[types]
