@@ -1,3 +1,5 @@
+<a href="https://pypi.org/project/filepack/"><img alt="PyPI" src="https://img.shields.io/pypi/v/filepack"></a>
+
 # filepack
 
 A user-friendly interface for handling files, archives, and compressed files in Python.
